@@ -13,30 +13,31 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.json.compact = False
 
 migrate = Migrate(app, db)
-
 db.init_app(app)
 
 api = Api(app)
 
+
 class ClearSession(Resource):
-
-    def delete(self):
-    
-        session['page_views'] = None
-        session['user_id'] = None
-
+    def get(self):
+        session.pop('page_views', None)
+        session.pop('user_id', None)
         return {}, 204
 
+    def delete(self):
+        session.pop('page_views', None)
+        session.pop('user_id', None)
+        return {}, 204
+
+
 class IndexArticle(Resource):
-    
     def get(self):
         articles = [ArticleSchema().dump(article) for article in Article.query.all()]
         return make_response(articles, 200)
 
+
 class ShowArticle(Resource):
-
     def get(self, id):
-
         article = Article.query.filter(Article.id == id).first()
         article_json = ArticleSchema().dump(article)
 
@@ -51,48 +52,61 @@ class ShowArticle(Resource):
 
         return article_json, 200
 
-class Login(Resource):
 
+class Login(Resource):
     def post(self):
-        
         username = request.get_json().get('username')
         user = User.query.filter(User.username == username).first()
 
         if user:
-        
             session['user_id'] = user.id
             return UserSchema().dump(user), 200
 
         return {}, 401
 
+
 class Logout(Resource):
-
     def delete(self):
+        session.pop('user_id', None)
+        return "", 204
 
-        session['user_id'] = None
-        
-        return {}, 204
 
 class CheckSession(Resource):
-
     def get(self):
-        
-        user_id = session['user_id']
+        user_id = session.get('user_id')
+
         if user_id:
             user = User.query.filter(User.id == user_id).first()
-            return UserSchema().dump(user), 200
-        
+            if user:
+                return UserSchema().dump(user), 200
+
         return {}, 401
 
+
 class MemberOnlyIndex(Resource):
-    
     def get(self):
-        pass
+        if not session.get('user_id'):
+            return {'error': 'Unauthorized'}, 401
+
+        member_articles = [
+            ArticleSchema().dump(article)
+            for article in Article.query.filter(Article.is_member_only == True).all()
+        ]
+        return member_articles, 200
+
 
 class MemberOnlyArticle(Resource):
-    
     def get(self, id):
-        pass
+        if not session.get('user_id'):
+            return {'error': 'Unauthorized'}, 401
+
+        article = Article.query.filter(Article.id == id).first()
+
+        if article:
+            return ArticleSchema().dump(article), 200
+
+        return {}, 404
+
 
 api.add_resource(ClearSession, '/clear', endpoint='clear')
 api.add_resource(IndexArticle, '/articles', endpoint='article_list')
